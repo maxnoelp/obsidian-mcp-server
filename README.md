@@ -24,7 +24,7 @@ Give AI assistants direct access to your Obsidian vaults via the [Model Context 
 
 ### 1. Download the plugin
 
-Go to the [Releases page](https://github.com/maxnoelp/obsidian-mcp/releases/latest) and download **`obsidian-mcp-windows.zip`**.
+Go to the [Releases page](https://github.com/maxnoelp/obsidian-mcp-server/releases/latest) and download **`obsidian-mcp-windows.zip`**.
 
 ### 2. Extract into your Obsidian vault
 
@@ -75,7 +75,7 @@ The server starts automatically. The status bar at the bottom will show `MCP :33
 1. **Settings → BRAT → "Add Beta Plugin"**
 2. Enter the GitHub URL:
    ```
-   https://github.com/maxnoelp/obsidian-mcp
+   https://github.com/maxnoelp/obsidian-mcp-server
    ```
 3. Click **"Add Plugin"** — BRAT will automatically download the latest release
 
