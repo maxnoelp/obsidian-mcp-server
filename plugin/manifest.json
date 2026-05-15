@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-mcp",
+  "name": "Obsidian MCP",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Startet einen lokalen MCP-Server fuer KI-Zugriff auf deinen Vault.",
+  "author": "obsidian-mcp",
+  "authorUrl": "https://github.com/obsidian-mcp/obsidian-mcp",
+  "isDesktopOnly": true
+}

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+server/dist/
+server/build/
+server/*.spec.bak
+*.spec~
+
+# Node
+plugin/node_modules/
+plugin/main.js
+plugin/bin/
+
+# Build-Artefakte
+release/
+*.zip
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

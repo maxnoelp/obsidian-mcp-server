@@ -1,0 +1,119 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python-Abhaengigkeiten installieren
+        run: pip install -r server/requirements.txt pyinstaller
+
+      - name: Server-Executable bauen
+        run: |
+          cd server
+          python -m PyInstaller obsidian-mcp.spec --clean --noconfirm
+
+      - name: Plugin-bin vorbereiten
+        run: |
+          New-Item -ItemType Directory -Force -Path plugin\bin
+          Copy-Item server\dist\obsidian-mcp-server.exe plugin\bin\
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Plugin bauen
+        run: |
+          cd plugin
+          npm install
+          node esbuild.config.mjs production
+
+      - name: Release-ZIP erstellen
+        run: |
+          $dest = "release\obsidian-mcp"
+          New-Item -ItemType Directory -Force -Path $dest
+          New-Item -ItemType Directory -Force -Path "$dest\bin"
+          Copy-Item plugin\main.js         $dest\
+          Copy-Item plugin\manifest.json   $dest\
+          Copy-Item plugin\styles.css      $dest\
+          Copy-Item plugin\bin\obsidian-mcp-server.exe "$dest\bin\"
+          Compress-Archive -Path release\obsidian-mcp -DestinationPath obsidian-mcp-windows.zip
+
+      - name: Artefakte speichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: obsidian-mcp-windows
+          path: |
+            obsidian-mcp-windows.zip
+            plugin/main.js
+            plugin/manifest.json
+            plugin/styles.css
+
+  release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: obsidian-mcp-windows
+
+      - name: Changelog aus Tag-Message lesen
+        id: tag
+        run: |
+          TAG_MSG=$(git tag -l --format='%(contents)' ${{ github.ref_name }} 2>/dev/null || echo "")
+          echo "body=$TAG_MSG" >> $GITHUB_OUTPUT
+
+      - name: GitHub Release erstellen
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Obsidian MCP ${{ github.ref_name }}"
+          body: |
+            ## Installation
+
+            ### Option A: Manuell
+            1. `obsidian-mcp-windows.zip` herunterladen und entpacken
+            2. Ordner `obsidian-mcp/` nach `<Vault>/.obsidian/plugins/` kopieren
+            3. In Obsidian: Settings → Community Plugins → Obsidian MCP aktivieren
+
+            ### Option B: BRAT Plugin Manager
+            1. [BRAT](https://github.com/TfTHacker/obsidian42-brat) installieren
+            2. BRAT → "Add Beta Plugin" → dieses Repository eintragen
+            3. BRAT installiert automatisch und haelt es aktuell
+
+            ### Claude Desktop einrichten
+            In `%APPDATA%\Claude\claude_desktop_config.json`:
+            ```json
+            {
+              "mcpServers": {
+                "obsidian": {
+                  "command": "C:/pfad/zu/.obsidian/plugins/obsidian-mcp/bin/obsidian-mcp-server.exe",
+                  "args": ["--transport", "stdio"]
+                }
+              }
+            }
+            ```
+
+            ### VS Code / OpenWebUI
+            Server-URL: `http://127.0.0.1:3333/sse`
+          files: |
+            obsidian-mcp-windows.zip
+            plugin/main.js
+            plugin/manifest.json
+            plugin/styles.css
+          draft: false
+          prerelease: false
