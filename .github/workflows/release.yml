@@ -72,12 +72,6 @@ jobs:
         with:
           name: obsidian-mcp-windows
 
-      - name: Changelog aus Tag-Message lesen
-        id: tag
-        run: |
-          TAG_MSG=$(git tag -l --format='%(contents)' ${{ github.ref_name }} 2>/dev/null || echo "")
-          echo "body=$TAG_MSG" >> $GITHUB_OUTPUT
-
       - name: GitHub Release erstellen
         uses: softprops/action-gh-release@v2
         with:
