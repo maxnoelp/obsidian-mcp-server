@@ -1,4 +1,5 @@
 import * as http from "http";
+import * as https from "https";
 import { ChildProcess, spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -55,30 +56,89 @@ export class ServerManager {
 		this.onStatusChange(status);
 	}
 
-	private getExecutablePath(): { cmd: string; args: string[] } {
+	private getExecutablePath(): { cmd: string; args: string[] } | null {
 		if (this.settings.serverExecutablePath) {
 			const exists = fs.existsSync(this.settings.serverExecutablePath);
-			this.log(`Manueller Pfad: ${this.settings.serverExecutablePath} (existiert: ${exists})`);
-			return { cmd: this.settings.serverExecutablePath, args: [] };
+			this.log(`Manual path: ${this.settings.serverExecutablePath} (exists: ${exists})`);
+			if (exists) return { cmd: this.settings.serverExecutablePath, args: [] };
 		}
 
 		const suffix =
 			process.platform === "win32"
 				? "obsidian-mcp-server.exe"
 				: process.platform === "darwin"
-				? "obsidian-mcp-server-macos"
+				? "obsidian-mcp-server-darwin"
 				: "obsidian-mcp-server-linux";
 
 		const bundled = path.join(this.pluginDir, "bin", suffix);
-		this.log(`Suche Executable: ${bundled} (existiert: ${fs.existsSync(bundled)})`);
+		this.log(`Looking for executable: ${bundled} (exists: ${fs.existsSync(bundled)})`);
 
 		if (fs.existsSync(bundled)) {
 			return { cmd: bundled, args: [] };
 		}
 
+		// Dev-mode fallback: only when running from source checkout
 		const serverScript = path.join(this.pluginDir, "..", "..", "server", "main.py");
-		this.log(`Fallback auf Python: ${serverScript} (existiert: ${fs.existsSync(serverScript)})`);
-		return { cmd: "python", args: [serverScript] };
+		if (fs.existsSync(serverScript)) {
+			const pythonCmd = process.platform === "win32" ? "py" : "python3";
+			this.log(`Dev fallback: ${pythonCmd} ${serverScript}`);
+			return { cmd: pythonCmd, args: [serverScript] };
+		}
+
+		return null; // needs download
+	}
+
+	private downloadExecutable(): Promise<void> {
+		return new Promise((resolve, reject) => {
+			const binDir = path.join(this.pluginDir, "bin");
+			if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
+
+			const suffix =
+				process.platform === "win32" ? "obsidian-mcp-server.exe"
+				: process.platform === "darwin" ? "obsidian-mcp-server-darwin"
+				: "obsidian-mcp-server-linux";
+
+			const dest = path.join(binDir, suffix);
+			const baseUrl = "https://github.com/maxnoelp/obsidian-mcp-server/releases/latest/download/";
+			const downloadUrl = baseUrl + suffix;
+
+			this.log(`Downloading executable from: ${downloadUrl}`);
+
+			const follow = (url: string, redirects = 5) => {
+				if (redirects === 0) { reject(new Error("Too many redirects")); return; }
+				const lib = url.startsWith("https") ? https : http;
+				(lib as typeof https).get(url, (res) => {
+					if (res.statusCode === 301 || res.statusCode === 302) {
+						follow(res.headers.location!, redirects - 1);
+						return;
+					}
+					if (res.statusCode !== 200) {
+						reject(new Error(`HTTP ${res.statusCode} downloading executable`));
+						return;
+					}
+					const total = parseInt(res.headers["content-length"] ?? "0", 10);
+					let received = 0;
+					const file = fs.createWriteStream(dest);
+					res.on("data", (chunk: Buffer) => {
+						received += chunk.length;
+						if (total > 0) {
+							const pct = Math.round((received / total) * 100);
+							this.log(`Download: ${pct}% (${(received / 1024 / 1024).toFixed(1)} MB)`);
+						}
+					});
+					res.pipe(file);
+					file.on("finish", () => {
+						file.close();
+						if (process.platform !== "win32") fs.chmodSync(dest, 0o755);
+						this.log(`Download complete: ${dest}`);
+						resolve();
+					});
+					file.on("error", (err) => { fs.unlinkSync(dest); reject(err); });
+				}).on("error", reject);
+			};
+
+			follow(downloadUrl);
+		});
 	}
 
 	private getConfigPath(): string {
@@ -161,7 +221,27 @@ export class ServerManager {
 		await this.syncVaults(this.settings.vaults);
 		this.setStatus("starting");
 
-		const { cmd, args } = this.getExecutablePath();
+		let exeInfo = this.getExecutablePath();
+		if (!exeInfo) {
+			this.log("Executable not found — downloading from GitHub releases...");
+			try {
+				await this.downloadExecutable();
+				exeInfo = this.getExecutablePath();
+			} catch (err) {
+				this.log(`Download failed: ${err}`);
+				this.setStatus("error");
+				this.closeLog();
+				return;
+			}
+			if (!exeInfo) {
+				this.log("Executable still not found after download.");
+				this.setStatus("error");
+				this.closeLog();
+				return;
+			}
+		}
+
+		const { cmd, args } = exeInfo;
 		const serverArgs = [
 			...args,
 			"--transport", "sse",

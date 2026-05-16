@@ -61,6 +61,7 @@ jobs:
             plugin/main.js
             plugin/manifest.json
             plugin/styles.css
+            plugin/bin/obsidian-mcp-server.exe
 
   release:
     needs: build-windows
@@ -109,5 +110,6 @@ jobs:
             plugin/main.js
             plugin/manifest.json
             plugin/styles.css
+            plugin/bin/obsidian-mcp-server.exe
           draft: false
           prerelease: false
