@@ -63,15 +63,73 @@ jobs:
             plugin/styles.css
             plugin/bin/obsidian-mcp-server.exe
 
+  build-macos:
+    runs-on: macos-latest # Apple Silicon (arm64)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python-Abhaengigkeiten installieren
+        run: pip install -r server/requirements.txt pyinstaller
+
+      - name: Server-Executable bauen
+        run: |
+          cd server
+          python -m PyInstaller obsidian-mcp.spec --clean --noconfirm
+
+      - name: Executable umbenennen (darwin)
+        run: |
+          mkdir -p plugin/bin
+          cp server/dist/obsidian-mcp-server plugin/bin/obsidian-mcp-server-darwin
+          chmod +x plugin/bin/obsidian-mcp-server-darwin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Plugin bauen
+        run: |
+          cd plugin
+          npm install
+          node esbuild.config.mjs production
+
+      - name: Release-ZIP erstellen
+        run: |
+          dest="release/obsidian-mcp"
+          mkdir -p "$dest/bin"
+          cp plugin/main.js       "$dest/"
+          cp plugin/manifest.json "$dest/"
+          cp plugin/styles.css    "$dest/"
+          cp plugin/bin/obsidian-mcp-server-darwin "$dest/bin/"
+          cd release
+          zip -r ../obsidian-mcp-macos.zip obsidian-mcp
+
+      - name: Artefakte speichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: obsidian-mcp-macos
+          path: |
+            obsidian-mcp-macos.zip
+            plugin/bin/obsidian-mcp-server-darwin
+
   release:
-    needs: build-windows
+    needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
+      - name: Windows-Artefakte herunterladen
+        uses: actions/download-artifact@v4
         with:
           name: obsidian-mcp-windows
+
+      - name: macOS-Artefakte herunterladen
+        uses: actions/download-artifact@v4
+        with:
+          name: obsidian-mcp-macos
 
       - name: GitHub Release erstellen
         uses: softprops/action-gh-release@v2
@@ -81,7 +139,9 @@ jobs:
             ## Installation
 
             ### Option A: Manuell
-            1. `obsidian-mcp-windows.zip` herunterladen und entpacken
+            1. Passendes ZIP herunterladen und entpacken:
+               - Windows: `obsidian-mcp-windows.zip`
+               - macOS (Apple Silicon): `obsidian-mcp-macos.zip`
             2. Ordner `obsidian-mcp/` nach `<Vault>/.obsidian/plugins/` kopieren
             3. In Obsidian: Settings → Community Plugins → Obsidian MCP aktivieren
 
@@ -90,7 +150,23 @@ jobs:
             2. BRAT → "Add Beta Plugin" → dieses Repository eintragen
             3. BRAT installiert automatisch und haelt es aktuell
 
-            ### Claude Desktop einrichten
+            > Hinweis: Die Server-Executable wird beim ersten Start automatisch
+            > passend zur Plattform aus diesem Release nachgeladen.
+
+            ### Claude Desktop einrichten (macOS)
+            In `~/Library/Application Support/Claude/claude_desktop_config.json`:
+            ```json
+            {
+              "mcpServers": {
+                "obsidian": {
+                  "command": "/pfad/zu/.obsidian/plugins/obsidian-mcp/bin/obsidian-mcp-server-darwin",
+                  "args": ["--transport", "stdio"]
+                }
+              }
+            }
+            ```
+
+            ### Claude Desktop einrichten (Windows)
             In `%APPDATA%\Claude\claude_desktop_config.json`:
             ```json
             {
@@ -107,9 +183,11 @@ jobs:
             Server-URL: `http://127.0.0.1:3333/sse`
           files: |
             obsidian-mcp-windows.zip
+            obsidian-mcp-macos.zip
             plugin/main.js
             plugin/manifest.json
             plugin/styles.css
             plugin/bin/obsidian-mcp-server.exe
+            plugin/bin/obsidian-mcp-server-darwin
           draft: false
           prerelease: false
