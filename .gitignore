@@ -6,6 +6,9 @@ server/dist/
 server/build/
 server/*.spec.bak
 *.spec~
+.pytest_cache/
+.venv*/
+venv/
 
 # Node
 plugin/node_modules/
